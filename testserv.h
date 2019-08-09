@@ -12,6 +12,7 @@ class TestServ : public QObject
 private:
     quint16 port = 7676;
     QString host;//имя сервера
+	quint32     _nextBlockSize;
 
     QTcpSocket *socket; //сокет
     QTcpServer *server; // указатель на сервер

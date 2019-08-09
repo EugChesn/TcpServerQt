@@ -10,10 +10,6 @@ TestServ::TestServ(QObject *parent) : QObject(parent)
     connect(server, SIGNAL(acceptError(QAbstractSocket::SocketError)), this, SLOT(onError(QAbstractSocket::SocketError)));
     qDebug()<<"start 2 conectted";
 
-    //timer_send = new QTimer();
-    //connect(this,SIGNAL(existMessage(QString)),this,SLOT(sendMessage(QString)));
-    //connect(timer_send,SIGNAL(timeout()),this,SLOT(sendMessage()));
-    //emit existMessage("Test message");
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -40,25 +36,15 @@ QVariant TestServ::uncompressData(const QByteArray &data)
 ////////////////////////////////////////////////////////////////////////////////
 void TestServ::sendMessage(QString test)
 {
-    //QString test = "POS=x0,y:0,z:5;";
-
-    /*QByteArray data;
-    QDataStream stream(&data, QIODevice::WriteOnly);
-    stream.setVersion(QDataStream::Qt_DefaultCompiledVersion);
-
-    QVariant tmp_data = test.toUtf8();
-
-    stream << (tmp_data);
-    //qDebug() << "SERVER SEND POS" << tmp_data.toString();
-    if(true)//socket->isOpen() && socket->isWritable())
-    {
-        socket->write(data);
-        socket->flush();
-        qDebug() << "SERVER SEND POS" << data;
-        //socket->flush();
-    }*/
-    QTextStream stream_str(socket);
-    stream_str << test.toUtf8();
+    //QTextStream stream_str(socket);
+    //stream_str << test.toUtf8();
+	
+	QByteArray arrBlock;
+    QDataStream out(&arrBlock, QIODevice::WriteOnly);
+    out << quint32(0) << test;
+    out.device()->seek(0);
+    out << quint32(arrBlock.size() - sizeof(quint32));
+    socket->write(arrBlock);
 
     socket->flush(); // !Чтоб разными пакетами отправлять
 }
@@ -103,50 +89,75 @@ void TestServ::socketReady()
                 pos += rx.matchedLength();
             }
             //qDebug() << line;*/
-    if(socket->waitForConnected(100000))
+    //if(socket->waitForConnected(100000))
+	if(true)
     {
-            socket->waitForReadyRead(1000);
-            QByteArray data = socket->readAll();
+            //socket->waitForReadyRead(1000);
+            //QByteArray data = socket->readAll();
+			QString commandClient;
+            QDataStream in(socket);
+            for (;;)
+            {
+                if (!_nextBlockSize)
+                {
+                    if (socket->bytesAvailable() < sizeof(quint32))
+                    { break; }
+
+                    in >> _nextBlockSize;
+                }
+                if (socket->bytesAvailable() < _nextBlockSize)
+                { break; }
+
+                //QString move;
+                in >> commandClient;
+                qDebug() << "Move: " + commandClient;
+
+                _nextBlockSize = 0;
+            }
+			
             qDebug() << data; //Gamepad command from Client
             socket->flush();
-            QString commandClient = data;
-            commandClient = commandClient.split(";").at(0);
+			if(commandClient != "")
+			{
+				//QString commandClient = data;
+				commandClient = commandClient.split(";").at(0);
 
-            int pos = 0;
-            QRegExp rx("((\\d{1,3}\\.\\d{1,3})|(\\d{1,3}))");
-            QStringList line;
-            while ((pos = rx.indexIn(commandClient, pos)) != -1) {
-                line.append(rx.cap(1));
-                pos += rx.matchedLength();
-            }
+				int pos = 0;
+				QRegExp rx("((\\d{1,3}\\.\\d{1,3})|(\\d{1,3}))");
+				QStringList line;
+				while ((pos = rx.indexIn(commandClient, pos)) != -1) {
+					line.append(rx.cap(1));
+					pos += rx.matchedLength();
+				}
 
-            //Если данные о командах геймпада пришли то имитация датчиков о положении в пространстве и отправка их клиенту
-            float x = !line.at(0).isNull()? line.at(0).toFloat() : 0;
-            float y = !line.at(1).isNull()? line.at(0).toFloat() : 0;
-            float z = !line.at(2).isNull()? line.at(0).toFloat() : 0;
-            x = x > 0 ? static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/x)) : 0;
-            y = y > 0 ? static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/y)) : 0;
-            z = z > 0 ? static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/z)) : 0;
-            QString sendData = "POS=x" + QString::number(x) +",y:" + QString::number(y) +",z:" + QString::number(z) +";";
-            qDebug() << "SERVER SEND POS" << sendData ;
-            emit existMessage(sendData);
+				//Если данные о командах геймпада пришли то имитация датчиков о положении в пространстве и отправка их клиенту
+				float x = !line.at(0).isNull()? line.at(0).toFloat() : 0;
+				float y = !line.at(1).isNull()? line.at(0).toFloat() : 0;
+				float z = !line.at(2).isNull()? line.at(0).toFloat() : 0;
+				x = x > 0 ? static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/x)) : 0;
+				y = y > 0 ? static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/y)) : 0;
+				z = z > 0 ? static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/z)) : 0;
+				QString sendData = "POS=x" + QString::number(x) +",y:" + QString::number(y) +",z:" + QString::number(z) +";";
+				qDebug() << "SERVER SEND POS" << sendData ;
+				emit existMessage(sendData);
 
-            //имитация датчиков газа и отправка их клиенту
-            int g1 = 1+ rand() % 100;
-            int g2 = 1+ rand() % 100;
-            int g3 = 1+ rand() % 100;
-            int g4 = 1+ rand() % 100;
-            QString sendData2 = "GAZ=g:" + QString::number(g1) +",g:" + QString::number(g2) +",g:" + QString::number(g3) +",g:" + QString::number(g4)+";";
-            qDebug() << "SERVER SEND GAZ" << sendData2 ;
-            emit existMessage(sendData2);
+				//имитация датчиков газа и отправка их клиенту
+				int g1 = 1+ rand() % 100;
+				int g2 = 1+ rand() % 100;
+				int g3 = 1+ rand() % 100;
+				int g4 = 1+ rand() % 100;
+				QString sendData2 = "GAZ=g:" + QString::number(g1) +",g:" + QString::number(g2) +",g:" + QString::number(g3) +",g:" + QString::number(g4)+";";
+				qDebug() << "SERVER SEND GAZ" << sendData2 ;
+				emit existMessage(sendData2);
 
-            //имитация датчиков батарей и отправка их клиенту
-            int bs = 100;
-            int bc1 = 100;
-            int bc2 = 100;
-            QString sendData3 = "BAT=bs:" + QString::number(bs) +",bc:" + QString::number(bc1) +",bc:" + QString::number(bc2)+";";
-            qDebug() << "SERVER SEND BAT" << sendData3;
-            emit existMessage(sendData3);
+				//имитация датчиков батарей и отправка их клиенту
+				int bs = 100;
+				int bc1 = 100;
+				int bc2 = 100;
+				QString sendData3 = "BAT=bs:" + QString::number(bs) +",bc:" + QString::number(bc1) +",bc:" + QString::number(bc2)+";";
+				qDebug() << "SERVER SEND BAT" << sendData3;
+				emit existMessage(sendData3);
+			}
     }
 }
 
